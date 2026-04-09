@@ -1,27 +1,51 @@
-# Coupled Harmonic Oscillator Simulation
+# 3D Molecular Dynamics Simulation
 
-A Python simulation of a two-mass coupled harmonic oscillator system that visualizes normal-mode decomposition and individual mass displacements over time.
+An interactive 3D particle simulation implementing the Lennard-Jones potential with Velocity Verlet integration and periodic boundary conditions — all rendered in real time using Matplotlib.
 
 ## Physics Overview
 
-The system models two masses connected by springs in the following arrangement:
+### Lennard-Jones Potential
+
+Particle interactions are governed by the Lennard-Jones (LJ) pair potential:
 
 ```
-Wall ──[k_outer]── Mass 1 ──[k_link]── Mass 2 ──[k_outer]── Wall
+V(r) = 4ε [ (σ/r)¹² − (σ/r)⁶ ]
 ```
 
-Each mass is anchored to a fixed wall via an outer spring (`k_outer`) and connected to the other mass via a coupling spring (`k_link`). The motion is fully described by two **normal modes**:
+| Term | Role |
+|------|------|
+| `(σ/r)¹²` | Short-range repulsion (Pauli exclusion) |
+| `(σ/r)⁶` | Long-range attraction (van der Waals) |
 
-| Mode | Frequency Formula | Description |
-|------|-------------------|-------------|
-| Slow mode | `ω_slow = √(k_outer / m)` | Masses move in phase |
-| Fast mode | `ω_fast = √((k_outer + 2·k_link) / m)` | Masses move out of phase |
-
-The individual displacements are recovered from the normal-mode coordinates:
+The force on particle `i` from all neighbours is derived from `F = −∇V`:
 
 ```
-x1 = 0.5 * (q_fast + q_slow)
-x2 = 0.5 * (q_slow - q_fast)
+F(r) = 24ε/r² [ 2(σ/r)¹² − (σ/r)⁶ ] · r̂
+```
+
+A **cutoff radius** (`r_cut = 3σ`) truncates interactions beyond a set distance for performance.
+
+### Integration: Velocity Verlet
+
+Each timestep advances the system using the Velocity Verlet algorithm, which conserves energy better than simple Euler integration:
+
+```
+v(t + dt/2) = v(t) + F(t)/m · dt/2
+x(t + dt)   = x(t) + v(t + dt/2) · dt
+F(t + dt)   = compute_forces(x(t + dt))
+v(t + dt)   = v(t + dt/2) + F(t + dt)/m · dt/2
+```
+
+### Periodic Boundary Conditions (PBC)
+
+Particles that exit one face of the simulation box re-enter from the opposite face (`positions %= L`). The minimum image convention is applied during force calculations to ensure each particle only interacts with the nearest image of every other particle.
+
+### Temperature
+
+Instantaneous temperature is estimated from the kinetic energy per particle:
+
+```
+T ≈ KE / N    where KE = ½ Σ m·v²
 ```
 
 ## Requirements
@@ -38,49 +62,52 @@ pip install numpy matplotlib
 
 ## Usage
 
-Run the simulation directly:
-
 ```bash
-python oscillator.py
+python md_simulation.py
 ```
 
-This will print the normal-mode frequencies to the console and open an interactive plot window.
+A 3D animated window will open immediately. The simulation runs for 500 frames and rotates the camera automatically for a better view of the particle dynamics.
+
+## Interactive Controls
+
+| Control | Description |
+|---------|-------------|
+| **Particles slider** | Drag to set N between 10 and 100. The system reinitialises instantly with the new particle count. |
+| **Mouse drag** | Rotate the 3D view manually at any time. |
 
 ## Parameters
 
-All parameters are set at the top of `coupled_harmonic_oscillator()` and can be freely adjusted:
+Adjust these constants at the top of the script:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `mass` | `1.0` | Mass of each object (kg) |
-| `k_outer` | `10.0` | Spring constant for wall-to-mass springs (N/m) |
-| `k_link` | `2.0` | Spring constant for the coupling spring (N/m) |
-| `A_fast` | `1.0` | Initial amplitude of the fast normal mode |
-| `A_slow` | `1.0` | Initial amplitude of the slow normal mode |
-| `phi_fast` | `0.0` | Initial phase of the fast normal mode (rad) |
-| `phi_slow` | `0.0` | Initial phase of the slow normal mode (rad) |
+| `L` | `10.0` | Box side length (simulation units) |
+| `dt` | `0.01` | Timestep size |
+| `epsilon` | `1.0` | LJ energy well depth (ε) |
+| `sigma` | `1.0` | LJ length scale / particle diameter (σ) |
+| `mass` | `1.0` | Particle mass |
+| `cutoff` | `3.0` | Force cutoff radius (in units of σ) |
+| `N` | `40` | Initial particle count |
+
+> **Performance tip:** Keep `N` below ~60 for smooth animation. The force calculation is O(N²) per frame; larger `N` will noticeably slow the update rate.
 
 ## Output
 
-The simulation produces a two-panel figure:
+The animation window displays:
 
-**Top panel — Mass Displacements:** Time-series displacement of Mass 1 and Mass 2, showing the beating pattern that emerges when both normal modes are active simultaneously.
-
-**Bottom panel — Normal Modes:** The underlying fast and slow mode oscillations whose superposition produces the motion shown above.
-
-Console output example:
-```
-Fast mode: 3.742 rad/s
-Slow mode: 3.162 rad/s
-```
-
-## Example: Observing Beating
-
-To see a clear beating pattern, set `k_link` to a small value relative to `k_outer` (e.g., `k_link = 0.5`). The two normal-mode frequencies will be close together, causing the amplitude of each mass to oscillate slowly — the hallmark of coupled-oscillator energy exchange.
+- **3D scatter plot** of all particles inside the periodic box
+- **Slow camera rotation** (0.5°/frame) for a dynamic view
+- **Title bar** updates every 5 frames showing current `N` and instantaneous temperature
 
 ## File Structure
 
 ```
 .
-└── oscillator.py   # Main simulation script
+└── md_simulation.py   # Main simulation script
 ```
+
+## Known Limitations
+
+- Force computation is pure Python/NumPy loops — not optimised for large N. For production MD, consider libraries such as LAMMPS, OpenMM, or a neighbour-list implementation.
+- Only kinetic energy is tracked; potential energy and total energy conservation are not plotted.
+- The LJ potential is not shifted at the cutoff, which introduces a small discontinuity in energy at `r = r_cut`.
